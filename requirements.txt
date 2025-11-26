@@ -1,0 +1,26 @@
+### Core PyTorch stack (install via the CUDA wheel index for GPU acceleration)
+torch==2.7.0
+torchvision
+torchaudio
+
+# SAM 3 base dependencies from pyproject.toml
+timm>=1.0.17
+numpy==1.26
+tqdm
+ftfy==6.1.1
+regex
+iopath>=0.1.10
+typing_extensions
+huggingface_hub
+einops
+# Triton kernels are only distributed for Linux; skip automatically on Windows
+triton ; platform_system != "Windows"
+
+### Visualization + video processing helpers used by detect_fish.py
+opencv-python
+matplotlib
+pillow
+pandas
+pycocotools
+scikit-image
+scikit-learn
