@@ -7,6 +7,7 @@
 import os
 from threading import Thread
 
+import cv2
 import numpy as np
 import torch
 from PIL import Image
@@ -210,19 +211,35 @@ def load_video_frames_from_video_file(
     compute_device=torch.device("cuda"),
 ):
     """Load the video frames from a video file."""
-    import decord
-
     img_mean = torch.tensor(img_mean, dtype=torch.float32)[:, None, None]
     img_std = torch.tensor(img_std, dtype=torch.float32)[:, None, None]
-    # Get the original video height and width
-    decord.bridge.set_bridge("torch")
-    video_height, video_width, _ = decord.VideoReader(video_path).next().shape
-    # Iterate over all frames in the video
-    images = []
-    for frame in decord.VideoReader(video_path, width=image_size, height=image_size):
-        images.append(frame.permute(2, 0, 1))
+    video_path = str(video_path)
+    capture = cv2.VideoCapture(video_path)
+    if not capture.isOpened():
+        raise RuntimeError(f"Failed to open video: {video_path}")
 
-    images = torch.stack(images, dim=0).float() / 255.0
+    video_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frames = []
+    while True:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if frame_rgb.shape[1] != image_size or frame_rgb.shape[0] != image_size:
+            frame_rgb = cv2.resize(
+                frame_rgb,
+                (image_size, image_size),
+                interpolation=cv2.INTER_LINEAR,
+            )
+        frame_tensor = torch.from_numpy(frame_rgb).permute(2, 0, 1)
+        frames.append(frame_tensor)
+
+    capture.release()
+    if not frames:
+        raise RuntimeError(f"Video contains no frames: {video_path}")
+
+    images = torch.stack(frames, dim=0).float() / 255.0
     if not offload_video_to_cpu:
         images = images.to(compute_device)
         img_mean = img_mean.to(compute_device)

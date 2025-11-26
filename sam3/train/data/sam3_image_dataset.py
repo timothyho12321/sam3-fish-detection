@@ -12,10 +12,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
+import cv2
 import torch
 import torch.utils.data
-import torchvision
-from decord import cpu, VideoReader
 from iopath.common.file_io import g_pathmgr
 
 from PIL import Image as PILImage
@@ -123,6 +122,22 @@ class Image:
     blurring_mask: Optional[Dict[str, Any]] = None
 
 
+def _load_video_frame_as_pil(video_path: str, frame_index: int) -> PILImage.Image:
+    """Fetch a specific frame from a video using OpenCV and return it as a PIL image."""
+    capture = cv2.VideoCapture(video_path)
+    if not capture.isOpened():
+        raise RuntimeError(f"Failed to open video: {video_path}")
+    capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+    ok, frame = capture.read()
+    capture.release()
+    if not ok:
+        raise RuntimeError(
+            f"Failed to read frame {frame_index} from video: {video_path}"
+        )
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    return PILImage.fromarray(frame_rgb)
+
+
 @dataclass
 class Datapoint:
     """Refers to an image/video and all its annotations"""
@@ -202,17 +217,10 @@ class CustomCocoDetectionAPI(VisionDataset):
             try:
                 if ".mp4" in path and path[-4:] == ".mp4":
                     # Going to load a video frame
-                    video_path, frame = path.split("@")
-                    video = VideoReader(video_path, ctx=cpu(0))
-                    # Convert to PIL image
-                    all_images.append(
-                        (
-                            img_id,
-                            torchvision.transforms.ToPILImage()(
-                                video[int(frame)].asnumpy()
-                            ),
-                        )
-                    )
+                    video_path, frame = path.rsplit("@", 1)
+                    frame_idx = int(frame)
+                    pil_frame = _load_video_frame_as_pil(video_path, frame_idx)
+                    all_images.append((img_id, pil_frame))
                 else:
                     with g_pathmgr.open(path, "rb") as fopen:
                         all_images.append((img_id, PILImage.open(fopen).convert("RGB")))
